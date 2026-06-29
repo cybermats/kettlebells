@@ -150,7 +150,7 @@ Lives in `domain/`, pure and fully unit-tested. Full rules in
 
 ## Tooling & conventions
 
-- **Package manager:** npm (use whatever lockfile exists once the project is scaffolded).
+- **Package manager:** pnpm (lockfile: `pnpm-lock.yaml`). Run scripts as `pnpm <script>`.
 - **Tests:** Vitest. Cover `domain/` (program rules, progression, migrations) thoroughly; those
   are the high-value, pure-logic targets.
 - **Naming:** `kebab-case` files, `camelCase` values, `PascalCase` types. Modules export named
@@ -189,10 +189,17 @@ Lives in `domain/`, pure and fully unit-tested. Full rules in
 
 ## Commands
 
-> The project is not scaffolded yet. Fill these in once `package.json` exists. Expected shape:
+- `pnpm dev` — Vite dev server
+- `pnpm build` — typecheck + static production build to `dist/`
+- `pnpm preview` — serve the built output
+- `pnpm test` — Vitest (single run); `pnpm test:watch` for watch mode
+- `pnpm typecheck` — `tsc --noEmit`
 
-- `npm run dev` — Vite dev server
-- `npm run build` — static production build to `dist/`
-- `npm run preview` — serve the built output
-- `npm test` — Vitest
-- `npm run typecheck` — `tsc --noEmit`
+**Toolchain activation:** Node/pnpm are not on the default `PATH`. Node 20.8.0 is installed via
+nvm and pnpm is provided by corepack. Prefix shell commands with:
+
+```bash
+export NVM_DIR="$HOME/.nvm"; \. "$NVM_DIR/nvm.sh"; nvm use 20.8.0 >/dev/null
+```
+
+then `pnpm <script>` works.
