@@ -86,5 +86,8 @@ are free again.
 
 - Worktrees under `/tmp` are ephemeral. **Commit or push** anything you want to keep
   before releasing or before the machine clears `/tmp`.
+- **`/tmp` is wiped on every reboot** (systemd-tmpfiles empties it at boot), and idle
+  files are also cleaned after 30 days. A reboot destroys all worktrees in the pool —
+  commit/push first, then run `worktree.sh prune` afterward to reconcile git's records.
 - One agent = one slot at a time is the intended pattern. Always release when done so
   the pool doesn't leak slots.
