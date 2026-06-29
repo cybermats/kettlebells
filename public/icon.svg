@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <!-- Rounded square background -->
+  <rect width="512" height="512" rx="96" ry="96" fill="#c2440c"/>
+
+  <!-- Kettlebell shape — simplified -->
+  <!-- Handle (top arc) -->
+  <path
+    d="M 176 210
+       A 80 80 0 0 1 336 210"
+    fill="none"
+    stroke="#fff"
+    stroke-width="36"
+    stroke-linecap="round"
+  />
+  <!-- Handle vertical sides -->
+  <line x1="176" y1="210" x2="176" y2="255" stroke="#fff" stroke-width="36" stroke-linecap="round"/>
+  <line x1="336" y1="210" x2="336" y2="255" stroke="#fff" stroke-width="36" stroke-linecap="round"/>
+  <!-- Bell body (rounded rectangle / circle) -->
+  <ellipse cx="256" cy="330" rx="100" ry="90" fill="#fff"/>
+  <!-- Weight lines on bell -->
+  <line x1="200" y1="310" x2="312" y2="310" stroke="#c2440c" stroke-width="8" stroke-linecap="round"/>
+  <line x1="192" y1="335" x2="320" y2="335" stroke="#c2440c" stroke-width="8" stroke-linecap="round"/>
+</svg>
