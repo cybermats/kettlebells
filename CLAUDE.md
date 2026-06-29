@@ -69,6 +69,31 @@ Keep it simple and explicit:
 Do not reach for a virtual DOM, signals library, or web-component framework. If a view gets
 complex, split it into more render functions, not more dependencies.
 
+## Responsive & mobile
+
+This is a phone-first PWA used at the gym ([ADR-0004](docs/adr/0004-offline-first-pwa.md)). Design
+and test for **small phone viewports in general**, not one specific device — modern iPhones and
+Android phones span roughly **320–430px** of CSS width (iPhone SE ≈ 375px, many Androids ≈ 360px,
+larger phones ≈ 414–430px).
+
+- **No horizontal overflow at any width in that range.** The layout must never extend past the
+  viewport edge or require sideways scrolling. ~320px is the floor a layout must survive; verify at
+  a narrow width, not just the default desktop window.
+- **Layout bugs are invisible to the test suite.** Vitest runs in jsdom with no real rendering, so
+  overflow/wrapping/grid issues won't fail a test. Verify layout changes by eye in the browser at a
+  narrow width (dev-tools device emulation), in addition to `tsc`/build/tests.
+- Prefer shrink-friendly layouts: `minmax(0, 1fr)` grid tracks, `min-width: 0` on flex/grid
+  children that hold growable content (selects, long text), and `flex-wrap` on rows of controls.
+
+### Open Props token scale is non-linear — check before you reach for a big number
+
+The numbered `--size-*` / `--font-size-*` tokens do **not** scale linearly with their number, and
+the jumps get large fast. Notably `--size-10` = 5rem, `--size-11` = 7.5rem, `--size-12` = 10rem
+(160px) — a `min-width: var(--size-12)` is wide enough to overflow a phone row on its own. Don't
+assume "a slightly bigger number" means "a slightly bigger size." Look up the actual value (Open
+Props docs, or grep `node_modules/open-props`) before using anything above ~`--size-7`, especially
+for `min-width`/`width` on mobile rows.
+
 ## Domain model
 
 The program has two exercises performed every session:

@@ -109,6 +109,7 @@
 
 .stopwatch {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: var(--size-3);
   background-color: var(--surface-2);
@@ -122,12 +123,15 @@
   font-weight: var(--font-weight-8);
   font-variant-numeric: tabular-nums;
   color: var(--text-1);
-  flex: 1;
+  /* Grow to fill, but allow shrinking below content size on tiny screens. */
+  flex: 1 1 auto;
+  min-width: 0;
   letter-spacing: -0.02em;
 }
 
 .stopwatch__controls {
   display: flex;
+  flex-wrap: wrap;
   gap: var(--size-2);
 }
 
@@ -141,7 +145,8 @@
 
 .set-row {
   display: grid;
-  grid-template-columns: auto 1fr auto auto;
+  /* index | side | weight (flexes & may shrink) | rest | done */
+  grid-template-columns: auto auto minmax(0, 1fr) auto auto;
   align-items: center;
   gap: var(--size-2);
   padding: var(--size-2) var(--size-3);
@@ -181,8 +186,9 @@
 }
 
 .set-row__weight {
-  /* weight picker select */
-  min-width: var(--size-12);
+  /* weight picker select — sits in the flexible grid column, allowed to shrink
+     so the row never overflows narrow (phone) viewports. */
+  min-width: 0;
 }
 
 .set-row__weight select {
@@ -234,10 +240,17 @@
 
 .coach-panel__row {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: var(--size-2);
   padding-block: var(--size-1);
+}
+
+/* The advance button and the reason text drop onto their own full-width lines
+   instead of pushing the row past the viewport edge. */
+.coach-panel__row .btn {
+  flex: 1 1 100%;
 }
 
 .coach-panel__row + .coach-panel__row {
@@ -267,6 +280,9 @@
 }
 
 .coach-panel__reason {
+  /* Full width when inside the flex .coach-panel__row; inert when appended
+     directly to the panel on the advance-error path. */
+  flex: 1 1 100%;
   font-size: var(--font-size-0);
   color: var(--color-danger);
   margin-block-start: var(--size-1);

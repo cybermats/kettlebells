@@ -14,6 +14,10 @@
   min-height: 100dvh;
   /* Reserve space for the fixed bottom nav */
   padding-block-end: var(--nav-height);
+  /* Phone-first guard: never let a stray wide child cause horizontal scroll.
+     Use `clip` rather than `hidden` so #app doesn't become a block-axis scroll
+     container — that would break the sticky .app-header. */
+  overflow-x: clip;
 }
 
 /* ─── Header ────────────────────────────────────────────────────────────────── */
