@@ -49,5 +49,12 @@ export interface AppState {
     draftSession: Session | null;
     /** Live stopwatch driving per-set rest timing. */
     stopwatch: StopwatchState;
+    /**
+     * Incremented to force a remount of the active view without a view change.
+     * Used after flows that mutate persisted data without navigating (e.g. finish
+     * session, import). Consumers treat `undefined` as 0 (omitting it from initial
+     * state objects is safe — it is optional).
+     */
+    refreshKey?: number;
   };
 }

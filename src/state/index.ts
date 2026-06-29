@@ -20,4 +20,5 @@ export {
   pauseStopwatch,
   resetStopwatch,
   elapsedMs,
+  incrementRefreshKey,
 } from "./actions";

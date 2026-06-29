@@ -106,8 +106,24 @@ export function createApp(store: Store, root: HTMLElement): { mount: () => void;
     // Initial render
     renderView(store.getState().ui.view);
 
-    // Subscribe to state changes; only re-render when the active view changes.
+    // Track the last seen refreshKey so we can force a remount when it increments.
+    // This covers flows like "Finish session" or import that change persisted data
+    // without changing the view name, where the current view would otherwise show
+    // stale content. Treat undefined (absent key) as 0.
+    let lastRefreshKey = store.getState().ui.refreshKey ?? 0;
+
+    // Subscribe to state changes.
+    // Re-render when the view changes OR when refreshKey increments (forced remount).
+    // Normal in-view updates (stopwatch tick, per-set weight picks) do NOT increment
+    // refreshKey and therefore do NOT trigger a full remount.
     store.subscribe((state) => {
+      const currentKey = state.ui.refreshKey ?? 0;
+      if (currentKey !== lastRefreshKey) {
+        lastRefreshKey = currentKey;
+        // Force remount by clearing activeView so renderView re-enters even if
+        // the view name hasn't changed.
+        activeView = null;
+      }
       renderView(state.ui.view);
     });
   }

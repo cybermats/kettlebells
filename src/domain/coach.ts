@@ -216,6 +216,108 @@ export function tryAdvance(
   return { ok: true, progression: advance(progression, settings, exercise) };
 }
 
+// ─── Progression reconciliation ──────────────────────────────────────────────
+
+/**
+ * Returns the owned bell nearest to `targetKg`.
+ * On a tie in distance, prefers the lower bell.
+ * Input is sorted defensively to tolerate arbitrary ordering.
+ * Returns `targetKg` unchanged when the inventory is empty.
+ */
+function nearestOwned(ownedBellsKg: number[], targetKg: number): number {
+  if (ownedBellsKg.length === 0) return targetKg;
+  const sorted = [...ownedBellsKg].sort((a, b) => a - b);
+  let nearest = sorted[0]!;
+  let minDiff = Math.abs(nearest - targetKg);
+  for (const bell of sorted) {
+    const diff = Math.abs(bell - targetKg);
+    if (diff < minDiff) {
+      nearest = bell;
+      minDiff = diff;
+    }
+    // On tie (diff === minDiff) the lower bell wins; since we iterate ascending
+    // and only update on strict improvement, the first (lowest) equidistant bell wins.
+  }
+  return nearest;
+}
+
+/**
+ * Reconciles `progression` against the current `settings.ownedBellsKg`.
+ *
+ * Called after any inventory change (add/remove bell) to keep the coach
+ * in sync with what the user actually owns. Rules:
+ *  - Sort and dedupe the inventory before use.
+ *  - If `baseKg` is not in the inventory, clamp to the nearest owned bell
+ *    (on tie prefer the lower bell).
+ *  - Recompute `nextKg = nextOwnedAbove(owned, baseKg) ?? baseKg`.
+ *  - If `baseKg` or `nextKg` changed, reset the heavy count to 0 (safest:
+ *    don't carry a step-loading count toward a different bell pair).
+ *  - Otherwise, keep the existing heavy count (clamp to valid range as safety).
+ *
+ * Pure and immutable: never mutates its arguments.
+ */
+export function reconcileProgression(
+  progression: ProgressionState,
+  settings: Settings,
+): ProgressionState {
+  // Sort and dedupe the inventory once
+  const owned = [...new Set(settings.ownedBellsKg)].sort((a, b) => a - b);
+
+  function reconcileExercise<T extends { baseKg: number; nextKg: number }>(
+    ex: T,
+    maxHeavy: number,
+    stepSize: number,
+    getHeavy: (ex: T) => number,
+  ): { baseKg: number; nextKg: number; heavy: number } {
+    const newBase = owned.includes(ex.baseKg) ? ex.baseKg : nearestOwned(owned, ex.baseKg);
+    const newNext = nextOwnedAbove(owned, newBase) ?? newBase;
+
+    const baseChanged = newBase !== ex.baseKg;
+    const nextChanged = newNext !== ex.nextKg;
+
+    let heavy: number;
+    if (baseChanged || nextChanged) {
+      heavy = 0;
+    } else {
+      // Keep existing count; clamp to valid range
+      const raw = getHeavy(ex);
+      // For swings (stepSize=1): valid 0..maxHeavy-1
+      // For getups (stepSize=2): valid even values 0..maxHeavy-2
+      const clamped = Math.min(Math.max(0, raw), maxHeavy - stepSize);
+      // Round down to nearest multiple of stepSize (no-op for swings where stepSize=1)
+      heavy = clamped - (clamped % stepSize);
+    }
+
+    return { baseKg: newBase, nextKg: newNext, heavy };
+  }
+
+  const swingResult = reconcileExercise(
+    progression.swing,
+    SWING_SETS,
+    1,
+    (e) => e.heavySets,
+  );
+  const getupResult = reconcileExercise(
+    progression.getup,
+    GETUP_SETS,
+    2,
+    (e) => e.heavyReps,
+  );
+
+  return {
+    swing: {
+      baseKg: swingResult.baseKg,
+      nextKg: swingResult.nextKg,
+      heavySets: swingResult.heavy,
+    },
+    getup: {
+      baseKg: getupResult.baseKg,
+      nextKg: getupResult.nextKg,
+      heavyReps: getupResult.heavy,
+    },
+  };
+}
+
 // ─── Goal detection ───────────────────────────────────────────────────────────
 
 /**

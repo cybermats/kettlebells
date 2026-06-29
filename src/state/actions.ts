@@ -132,6 +132,30 @@ export function resetStopwatch(): Updater {
 }
 
 // ---------------------------------------------------------------------------
+// Refresh key — force remount of the active view
+// ---------------------------------------------------------------------------
+
+/**
+ * Increment `ui.refreshKey` to signal that the active view should be fully
+ * remounted even though the view name has not changed.
+ *
+ * Use this after flows that update persisted state without navigating, e.g.:
+ *  - "Finish session" → the session view should show a fresh prescription.
+ *  - Import (replace-all) → the settings view should reflect the new data.
+ *
+ * Consumers treat `undefined` (absent key) as 0.
+ */
+export function incrementRefreshKey(): Updater {
+  return (prev) => ({
+    ...prev,
+    ui: {
+      ...prev.ui,
+      refreshKey: (prev.ui.refreshKey ?? 0) + 1,
+    },
+  });
+}
+
+// ---------------------------------------------------------------------------
 // Selectors (pure — not updaters)
 // ---------------------------------------------------------------------------
 
