@@ -1,0 +1,15 @@
+/**
+ * Main stylesheet — entry point.
+ *
+ * Import order matters:
+ *  1. Open Props design tokens (size, space, color, radius, shadow, …)
+ *  2. Our own base/reset layer
+ *  3. Layout tokens / theme variables
+ *  4. Component-level files
+ */
+
+@import "open-props/style";
+@import "./tokens.css";
+@import "./base.css";
+@import "./layout.css";
+@import "./components.css";

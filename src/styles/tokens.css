@@ -1,0 +1,113 @@
+/**
+ * App-level design tokens.
+ *
+ * Light theme is defined here as default. Dark theme overrides the same
+ * custom-property names either via @media or via [data-theme="dark"].
+ *
+ * The UI layer sets document.documentElement.dataset.theme = "light" | "dark"
+ * to implement the manual override; "auto" removes the attribute so the
+ * @media query takes effect.
+ */
+
+/* ─── Light theme (default) ────────────────────────────────────────────────── */
+
+:root {
+  /* Surfaces */
+  --surface-1:      var(--gray-0);
+  --surface-2:      var(--gray-1);
+  --surface-3:      var(--gray-2);
+  --surface-accent: var(--orange-1);
+
+  /* Text */
+  --text-1:         var(--gray-9);
+  --text-2:         var(--gray-7);
+  --text-3:         var(--gray-5);
+
+  /* Accent (kettlebell orange) */
+  --accent:         var(--orange-6);
+  --accent-dark:    var(--orange-7);
+  --accent-text:    var(--orange-0);
+
+  /* Status */
+  --color-success:  var(--green-6);
+  --color-warning:  var(--yellow-6);
+  --color-danger:   var(--red-6);
+
+  /* Borders */
+  --border-color:   var(--gray-3);
+
+  /* Tap targets: 44px minimum for mobile */
+  --tap-min:        2.75rem;
+
+  /* Nav */
+  --nav-height:     3.5rem;
+}
+
+/* ─── Dark theme (auto / explicit) ─────────────────────────────────────────── */
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --surface-1:      var(--gray-9);
+    --surface-2:      var(--gray-8);
+    --surface-3:      var(--gray-7);
+    --surface-accent: color-mix(in oklab, var(--orange-9), var(--gray-9) 60%);
+
+    --text-1:         var(--gray-0);
+    --text-2:         var(--gray-2);
+    --text-3:         var(--gray-4);
+
+    --accent:         var(--orange-4);
+    --accent-dark:    var(--orange-3);
+    --accent-text:    var(--gray-9);
+
+    --color-success:  var(--green-4);
+    --color-warning:  var(--yellow-4);
+    --color-danger:   var(--red-4);
+
+    --border-color:   var(--gray-7);
+  }
+}
+
+/* Explicit dark override (data-theme="dark" wins regardless of @media) */
+:root[data-theme="dark"] {
+  --surface-1:      var(--gray-9);
+  --surface-2:      var(--gray-8);
+  --surface-3:      var(--gray-7);
+  --surface-accent: color-mix(in oklab, var(--orange-9), var(--gray-9) 60%);
+
+  --text-1:         var(--gray-0);
+  --text-2:         var(--gray-2);
+  --text-3:         var(--gray-4);
+
+  --accent:         var(--orange-4);
+  --accent-dark:    var(--orange-3);
+  --accent-text:    var(--gray-9);
+
+  --color-success:  var(--green-4);
+  --color-warning:  var(--yellow-4);
+  --color-danger:   var(--red-4);
+
+  --border-color:   var(--gray-7);
+}
+
+/* Explicit light override */
+:root[data-theme="light"] {
+  --surface-1:      var(--gray-0);
+  --surface-2:      var(--gray-1);
+  --surface-3:      var(--gray-2);
+  --surface-accent: var(--orange-1);
+
+  --text-1:         var(--gray-9);
+  --text-2:         var(--gray-7);
+  --text-3:         var(--gray-5);
+
+  --accent:         var(--orange-6);
+  --accent-dark:    var(--orange-7);
+  --accent-text:    var(--orange-0);
+
+  --color-success:  var(--green-6);
+  --color-warning:  var(--yellow-6);
+  --color-danger:   var(--red-6);
+
+  --border-color:   var(--gray-3);
+}
