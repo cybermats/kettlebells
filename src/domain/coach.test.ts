@@ -7,6 +7,7 @@ import {
   canAdvanceWeight,
   tryAdvance,
   goalReached,
+  reconcileProgression,
 } from "./coach.js";
 import { defaultSettings, initialProgression, SWING_SETS, GETUP_SETS } from "./standards.js";
 
@@ -609,5 +610,141 @@ describe("goalReached", () => {
       getupBlockSec: 590,
     };
     expect(goalReached(session, goal)).toBe(false);
+  });
+});
+
+// ─── reconcileProgression ─────────────────────────────────────────────────────
+
+describe("reconcileProgression", () => {
+  it("is a no-op when already consistent (base and next both in inventory)", () => {
+    const s = defaultSettings(); // bells [16, 24, 32]
+    const p: ProgressionState = {
+      swing: { baseKg: 16, nextKg: 24, heavySets: 3 },
+      getup: { baseKg: 16, nextKg: 24, heavyReps: 4 },
+    };
+    const result = reconcileProgression(p, s);
+    expect(result.swing).toEqual(p.swing);
+    expect(result.getup).toEqual(p.getup);
+  });
+
+  it("never prescribes a non-owned weight after removing the base bell", () => {
+    // Start: base=24, next=32, bells=[16, 24, 32]
+    // Remove 24 → bells=[16, 32]; base 24 not in inventory → should clamp to nearest
+    const s: Settings = {
+      ...defaultSettings(),
+      ownedBellsKg: [16, 32],
+    };
+    const p: ProgressionState = {
+      swing: { baseKg: 24, nextKg: 32, heavySets: 5 },
+      getup: { baseKg: 24, nextKg: 32, heavyReps: 4 },
+    };
+    const result = reconcileProgression(p, s);
+    // 24 is equidistant from 16 and 32 — on tie, prefer lower: 16
+    expect(s.ownedBellsKg).toContain(result.swing.baseKg);
+    expect(s.ownedBellsKg).toContain(result.swing.nextKg);
+    expect(s.ownedBellsKg).toContain(result.getup.baseKg);
+    expect(s.ownedBellsKg).toContain(result.getup.nextKg);
+  });
+
+  it("clamps to lower bell when base is equidistant (tie-breaks lower)", () => {
+    const s: Settings = { ...defaultSettings(), ownedBellsKg: [16, 32] };
+    const p: ProgressionState = {
+      swing: { baseKg: 24, nextKg: 32, heavySets: 0 },
+      getup: { baseKg: 24, nextKg: 32, heavyReps: 0 },
+    };
+    const result = reconcileProgression(p, s);
+    expect(result.swing.baseKg).toBe(16); // 24 equidistant 16/32 → prefer 16
+    expect(result.getup.baseKg).toBe(16);
+  });
+
+  it("resets heavy count to 0 when base changes", () => {
+    const s: Settings = { ...defaultSettings(), ownedBellsKg: [16, 32] };
+    const p: ProgressionState = {
+      swing: { baseKg: 24, nextKg: 32, heavySets: 5 },
+      getup: { baseKg: 24, nextKg: 32, heavyReps: 4 },
+    };
+    const result = reconcileProgression(p, s);
+    expect(result.swing.heavySets).toBe(0);
+    expect(result.getup.heavyReps).toBe(0);
+  });
+
+  it("resets heavy count to 0 when nextKg changes (e.g. heavier bell added after single-bell start)", () => {
+    // Single-bell start: base=16, next=16 (no heavier bell).
+    // User adds 24 kg → nextKg should now point at 24.
+    const p: ProgressionState = {
+      swing: { baseKg: 16, nextKg: 16, heavySets: 0 },
+      getup: { baseKg: 16, nextKg: 16, heavyReps: 0 },
+    };
+    const sWith24: Settings = { ...defaultSettings(), ownedBellsKg: [16, 24] };
+    const result = reconcileProgression(p, sWith24);
+    expect(result.swing.baseKg).toBe(16); // base unchanged
+    expect(result.swing.nextKg).toBe(24); // now points at the new heavier bell
+    expect(result.swing.heavySets).toBe(0); // reset because nextKg changed
+    expect(result.getup.nextKg).toBe(24);
+    expect(result.getup.heavyReps).toBe(0);
+  });
+
+  it("after adding heavier bell, canAdvanceWeight can succeed (when ready)", () => {
+    // Simulate single-bell progression reconciled after adding a heavier bell.
+    const sWith24: Settings = {
+      ...defaultSettings(),
+      ownedBellsKg: [16, 24],
+      enforceOneVariableAtATime: false, // don't require readiness for this test
+    };
+    const p: ProgressionState = {
+      swing: { baseKg: 16, nextKg: 16, heavySets: 0 },
+      getup: { baseKg: 16, nextKg: 16, heavyReps: 0 },
+    };
+    const reconciled = reconcileProgression(p, sWith24);
+    // Now canAdvanceWeight should succeed (there IS a heavier bell)
+    const result = canAdvanceWeight([], sWith24, reconciled, "swing");
+    expect(result.ok).toBe(true);
+  });
+
+  it("handles unsorted inventory", () => {
+    // Inventory [32, 16, 24] should behave the same as [16, 24, 32]
+    const unsorted: Settings = { ...defaultSettings(), ownedBellsKg: [32, 16, 24] };
+    const sorted: Settings = { ...defaultSettings(), ownedBellsKg: [16, 24, 32] };
+    const p: ProgressionState = {
+      swing: { baseKg: 16, nextKg: 24, heavySets: 2 },
+      getup: { baseKg: 16, nextKg: 24, heavyReps: 2 },
+    };
+    const r1 = reconcileProgression(p, unsorted);
+    const r2 = reconcileProgression(p, sorted);
+    expect(r1).toEqual(r2);
+  });
+
+  it("does not mutate the input progression", () => {
+    const s = defaultSettings();
+    const p: ProgressionState = {
+      swing: { baseKg: 16, nextKg: 24, heavySets: 3 },
+      getup: { baseKg: 16, nextKg: 24, heavyReps: 2 },
+    };
+    reconcileProgression(p, s);
+    expect(p.swing.heavySets).toBe(3);
+    expect(p.getup.heavyReps).toBe(2);
+  });
+
+  it("keeps heavy counts when base and next are unchanged", () => {
+    const s = defaultSettings(); // bells [16, 24, 32]
+    const p: ProgressionState = {
+      swing: { baseKg: 16, nextKg: 24, heavySets: 7 },
+      getup: { baseKg: 16, nextKg: 24, heavyReps: 6 },
+    };
+    const result = reconcileProgression(p, s);
+    expect(result.swing.heavySets).toBe(7);
+    expect(result.getup.heavyReps).toBe(6);
+  });
+
+  it("when at the heaviest bell (base===next), adding a higher bell updates nextKg", () => {
+    const s: Settings = { ...defaultSettings(), ownedBellsKg: [32, 40] };
+    const p: ProgressionState = {
+      swing: { baseKg: 32, nextKg: 32, heavySets: 0 }, // was at top
+      getup: { baseKg: 32, nextKg: 32, heavyReps: 0 },
+    };
+    const result = reconcileProgression(p, s);
+    expect(result.swing.baseKg).toBe(32);
+    expect(result.swing.nextKg).toBe(40); // new heavier bell
+    expect(result.swing.heavySets).toBe(0); // reset because nextKg changed
   });
 });

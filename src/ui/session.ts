@@ -7,23 +7,35 @@
  *  - A coach panel showing readiness and the advance-weight button
  *  - A "Finish session" button that builds a Session and dispatches addSession
  *
+ * Block timing convention
+ * ───────────────────────
+ * Block duration is measured in **stopwatch elapsed time** (ms), not wall-clock
+ * Date.now(), so pausing the stopwatch correctly excludes pause time from block
+ * measurements and the two time sources never desync.
+ *
+ *  swingBlock  = [stopwatch start (elapsed=0), last swing set done]
+ *  getupBlock  = [last swing set done, last getup set done]
+ *
+ * The swing block therefore includes the work done on swing set 0 (previously
+ * omitted because start was recorded on set-0-done rather than stopwatch-start).
+ *
  * Lifecycle:
  *  renderSession(container, store) — mounts the view once; sets up internal state.
- *  The returned cleanup function must be called when navigating away.
+ *  The returned cleanup function must be called when switching away.
  */
 
 import type { Store } from "../state/index";
 import type { Session, WorkSet, ExerciseKind } from "../domain/types";
 import {
   addSession,
-  setDraftSession,
   startStopwatch,
   pauseStopwatch,
   resetStopwatch,
   setProgression,
   elapsedMs,
+  incrementRefreshKey,
 } from "../state/index";
-import { prescribeSession, readiness, tryAdvance } from "../domain/coach";
+import { prescribeSession, readiness, canAdvanceWeight, tryAdvance } from "../domain/coach";
 import { el, clear, formatMs, formatSec } from "./dom";
 
 // ─── Side / hand label helpers ────────────────────────────────────────────────
@@ -36,6 +48,23 @@ function swingHand(index: number): string {
 /** Returns "R" or "L" for a get-up set at the given 0-based index. */
 function getupSide(index: number): string {
   return index % 2 === 0 ? "R" : "L";
+}
+
+// ─── UUID helper ──────────────────────────────────────────────────────────────
+
+/**
+ * Generate a unique session id.
+ * Falls back to a pseudo-random hex string when crypto.randomUUID() is unavailable
+ * (e.g. non-secure contexts in some browsers).
+ */
+function generateId(): string {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
+  }
+  // Fallback: 32 hex chars (128 bits of randomness via Math.random)
+  return Array.from({ length: 4 }, () =>
+    Math.floor(Math.random() * 0x100000000).toString(16).padStart(8, "0"),
+  ).join("");
 }
 
 // ─── Draft set type ───────────────────────────────────────────────────────────
@@ -77,11 +106,19 @@ export function renderSession(container: HTMLElement, store: Store): () => void 
     done: false,
   }));
 
-  // Phase tracking for block timing
-  let swingStartMs: number | null = null;
-  let swingEndMs: number | null = null;
-  let getupStartMs: number | null = null;
-  let getupEndMs: number | null = null;
+  // ─── Block timing (stopwatch-elapsed, not wall-clock) ─────────────────────
+  //
+  // All block timestamps are stored as stopwatch elapsed-ms values so pausing
+  // the stopwatch correctly excludes idle time.
+  //
+  //  swingBlock  = [swingBlockStartMs=0, swingBlockEndMs=elapsed when set 9 done]
+  //  getupBlock  = [getupBlockStartMs=elapsed when last swing done,
+  //                 getupBlockEndMs=elapsed when last getup done]
+  let swingBlockStartMs: number | null = null; // set to 0 when stopwatch first starts
+  let swingBlockEndMs: number | null = null;
+  let getupBlockStartMs: number | null = null;
+  let getupBlockEndMs: number | null = null;
+
   // Track the stopwatch reading at the start of each set's rest interval
   let lastMarkMs: number | null = null;
 
@@ -160,19 +197,29 @@ export function renderSession(container: HTMLElement, store: Store): () => void 
     const sw = store.getState().ui.stopwatch;
     const currentElapsed = elapsedMs(sw, nowMs);
 
-    // Capture actual rest since last mark
+    // Capture actual rest since last mark (using stopwatch elapsed for consistency)
     if (lastMarkMs !== null) {
       draft.actualRestSec = Math.round((currentElapsed - lastMarkMs) / 1000);
     }
     lastMarkMs = currentElapsed;
 
-    // Block start/end tracking
+    // ── Block timing (stopwatch elapsed, not wall-clock) ──────────────────
+    // swingBlock spans [swingBlockStartMs=0, elapsed-when-last-swing-done].
+    // getupBlock spans [elapsed-when-last-swing-done, elapsed-when-last-getup-done].
+    // Only record block times when the stopwatch has actually been started
+    // (swingBlockStartMs is set to 0 in the start-button handler). Without
+    // this guard, elapsedMs returns 0 even with a stopped clock and we'd
+    // store getupBlockSec=0 when the user never ran the stopwatch.
     if (kind === "swing") {
-      if (index === 0 && swingStartMs === null) swingStartMs = nowMs;
-      if (index === prescribedSwings.length - 1) swingEndMs = nowMs;
+      if (index === prescribedSwings.length - 1 && swingBlockStartMs !== null) {
+        swingBlockEndMs = currentElapsed;
+        // getup block starts immediately after swings finish (same elapsed value)
+        getupBlockStartMs = currentElapsed;
+      }
     } else {
-      if (index === 0 && getupStartMs === null) getupStartMs = nowMs;
-      if (index === prescribedGetups.length - 1) getupEndMs = nowMs;
+      if (index === prescribedGetups.length - 1 && getupBlockStartMs !== null) {
+        getupBlockEndMs = currentElapsed;
+      }
     }
 
     draft.done = true;
@@ -180,9 +227,6 @@ export function renderSession(container: HTMLElement, store: Store): () => void 
     btn.classList.add("set-row__done-btn--done");
     btn.disabled = true;
     btn.textContent = "✓";
-
-    // Update draft in store (builds interim Session shape)
-    syncDraftToStore();
 
     // If all swings done, prompt user to move to getups
     const allSwingsDone = swingDrafts.every((d) => d.done);
@@ -195,36 +239,6 @@ export function renderSession(container: HTMLElement, store: Store): () => void 
       showStatus("All sets done! Tap 'Finish session' when ready.", false);
       finishBtn.disabled = false;
     }
-  }
-
-  function syncDraftToStore(): void {
-    const draftSession: Session = {
-      id: "",
-      date: new Date().toISOString().slice(0, 10),
-      swings: swingDrafts.map((d) => {
-        const ws: WorkSet = {
-          kind: "swing",
-          weightKg: d.weightKg,
-          reps: d.base.reps,
-          prescribedRestSec: d.base.prescribedRestSec,
-        };
-        if (d.actualRestSec !== undefined) ws.actualRestSec = d.actualRestSec;
-        if (d.workSec !== undefined) ws.workSec = d.workSec;
-        return ws;
-      }),
-      getups: getupDrafts.map((d) => {
-        const ws: WorkSet = {
-          kind: "getup",
-          weightKg: d.weightKg,
-          reps: d.base.reps,
-          prescribedRestSec: d.base.prescribedRestSec,
-        };
-        if (d.actualRestSec !== undefined) ws.actualRestSec = d.actualRestSec;
-        if (d.workSec !== undefined) ws.workSec = d.workSec;
-        return ws;
-      }),
-    };
-    store.setState(setDraftSession(draftSession));
   }
 
   // Build swing sets
@@ -266,7 +280,13 @@ export function renderSession(container: HTMLElement, store: Store): () => void 
     store.setState(startStopwatch(Date.now()));
     swStartBtn.disabled = true;
     swPauseBtn.disabled = false;
-    if (lastMarkMs === null) lastMarkMs = 0;
+    // Record the start of the first mark interval and the swing block start.
+    // Both are elapsed=0 at stopwatch start; this ensures the swing block spans
+    // from the very beginning (including set 0's work), not from set-0-done.
+    if (lastMarkMs === null) {
+      lastMarkMs = 0;
+      swingBlockStartMs = 0;
+    }
   });
 
   swPauseBtn.addEventListener("click", () => {
@@ -281,6 +301,10 @@ export function renderSession(container: HTMLElement, store: Store): () => void 
     swStartBtn.disabled = false;
     swPauseBtn.disabled = true;
     lastMarkMs = null;
+    swingBlockStartMs = null;
+    swingBlockEndMs = null;
+    getupBlockStartMs = null;
+    getupBlockEndMs = null;
   });
 
   // Ticking display — requestAnimationFrame loop
@@ -311,6 +335,8 @@ export function renderSession(container: HTMLElement, store: Store): () => void 
 
     for (const kind of ["swing", "getup"] as const) {
       const isReady = kind === "swing" ? ready.swing : ready.getup;
+      const canAdvance = canAdvanceWeight(sessions, settings, progression, kind);
+
       const row = el("div", { class: "coach-panel__row" });
       const label = el("span", { class: "coach-panel__label" }, [
         kind === "swing" ? "Swings" : "Get-ups",
@@ -321,13 +347,19 @@ export function renderSession(container: HTMLElement, store: Store): () => void 
 
       row.append(label, statusEl);
 
-      if (isReady) {
-        const advBtn = el("button", { class: "btn btn--ghost btn--sm", type: "button" }, [
-          `Advance ${kind} weight`,
-        ]);
-        advBtn.addEventListener("click", () => handleAdvance(kind, advBtn, panel));
-        row.appendChild(advBtn);
+      // Gate the button on canAdvanceWeight (not readiness alone), so it is
+      // disabled when the user is already at the heaviest bell or blocked by
+      // another reason. Show the reason as text when disabled.
+      const advBtn = el("button", { class: "btn btn--ghost btn--sm", type: "button" }, [
+        `Advance ${kind} weight`,
+      ]);
+      if (!canAdvance.ok) {
+        (advBtn as HTMLButtonElement).disabled = true;
+        const reasonEl = el("p", { class: "coach-panel__reason" }, [canAdvance.reason]);
+        row.appendChild(reasonEl);
       }
+      advBtn.addEventListener("click", () => handleAdvance(kind, advBtn as HTMLButtonElement, panel));
+      row.appendChild(advBtn);
 
       panel.appendChild(row);
     }
@@ -368,7 +400,7 @@ export function renderSession(container: HTMLElement, store: Store): () => void 
   // ─── Finish session ───────────────────────────────────────────────────────────
 
   function finishSession(): void {
-    const id = crypto.randomUUID();
+    const id = generateId();
     const date = new Date().toISOString().slice(0, 10);
 
     const swings: WorkSet[] = swingDrafts.map((d) => {
@@ -397,21 +429,20 @@ export function renderSession(container: HTMLElement, store: Store): () => void 
 
     const session: Session = { id, date, swings, getups };
 
-    // Block times: use wall-clock diff when we have both endpoints
-    if (swingStartMs !== null && swingEndMs !== null) {
-      session.swingBlockSec = Math.round((swingEndMs - swingStartMs) / 1000);
+    // Block times: use stopwatch-elapsed diffs (consistent with rest timing).
+    // Clamp to >= 0 to guard against any edge-case out-of-order marks.
+    if (swingBlockStartMs !== null && swingBlockEndMs !== null) {
+      session.swingBlockSec = Math.max(0, Math.round((swingBlockEndMs - swingBlockStartMs) / 1000));
     }
-    if (getupStartMs !== null && getupEndMs !== null) {
-      session.getupBlockSec = Math.round((getupEndMs - getupStartMs) / 1000);
+    if (getupBlockStartMs !== null && getupBlockEndMs !== null) {
+      session.getupBlockSec = Math.max(0, Math.round((getupBlockEndMs - getupBlockStartMs) / 1000));
     }
 
     store.setState(addSession(session));
-    store.setState(setDraftSession(null));
     store.setState(resetStopwatch());
-
-    showStatus("Session saved!", false);
-    finishBtn.disabled = true;
-    finishBtn.textContent = "✓ Saved";
+    // Increment the refresh key so app.ts remounts this view with a fresh
+    // prescription for the next session rather than showing the completed one.
+    store.setState(incrementRefreshKey());
   }
 
   // ─── Cleanup ─────────────────────────────────────────────────────────────────

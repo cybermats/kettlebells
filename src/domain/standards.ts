@@ -66,10 +66,12 @@ export function defaultSettings(): Settings {
 /**
  * Returns a fresh ProgressionState for the given settings.
  * baseKg = first owned bell; nextKg = second owned bell (or same as base if only one).
- * Assumes ownedBellsKg is non-empty and ascending.
+ * Sorts and dedupes the inventory defensively so an unsorted or imported inventory
+ * never yields baseKg > nextKg.
  */
 export function initialProgression(settings: Settings): ProgressionState {
-  const bells = settings.ownedBellsKg;
+  // Sort and dedupe defensively — callers may supply unsorted or duplicate inventories.
+  const bells = [...new Set(settings.ownedBellsKg)].sort((a, b) => a - b);
   const baseKg = bells[0]!;
   const nextKg = bells[1] ?? baseKg;
   return {

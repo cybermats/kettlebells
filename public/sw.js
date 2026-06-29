@@ -1,13 +1,26 @@
 /**
- * Kettlebells service worker — cache-first with runtime caching.
+ * Kettlebells service worker.
  *
- * Strategy:
- *  - On install: precache the app shell (root page, manifest, sw itself).
- *  - On fetch: cache-first for same-origin GET requests, so Vite-hashed
- *    JS/CSS get cached on first load and served offline thereafter.
- *  - Navigation requests always fall back to cached index.html for SPA routing.
- *  - On activate: delete caches with old version names.
- *  - skipWaiting() + clients.claim() so updates activate on next reload.
+ * Strategy (two-tier):
+ *
+ *  Navigation requests (mode === "navigate", i.e. HTML page loads):
+ *    → Network-first: attempt a live fetch so returning visitors get a fresh
+ *      index.html on every online visit. Cache the response on success.
+ *      Fall back to the cached index.html when offline.
+ *    This prevents returning visitors from being stuck on a stale build when
+ *      the service-worker CACHE_VERSION has not changed.
+ *
+ *  Static assets (JS/CSS/images — Vite content-hashed, immutable URLs):
+ *    → Cache-first: serve from cache on hit; fetch, cache, and serve on miss.
+ *      These are safe to cache indefinitely because their URLs change when
+ *      content changes.
+ *
+ *  After the first online load the app is fully cached and works offline for
+ *  both navigations (via the cached index.html fallback) and assets (via
+ *  cache-first hits).
+ *
+ *  On activate: delete all caches from previous versions so stale assets
+ *  don't accumulate on disk.
  */
 
 const CACHE_VERSION = "kb-v1";
@@ -57,13 +70,41 @@ self.addEventListener("fetch", (event) => {
   const url = new URL(request.url);
   if (url.origin !== location.origin) return;
 
-  e.respondWith(cacheFirst(request));
+  if (request.mode === "navigate") {
+    // Navigation (HTML) → network-first so stale builds don't get stuck
+    e.respondWith(networkFirstNav(request));
+  } else {
+    // Static assets (Vite content-hashed, immutable) → cache-first
+    e.respondWith(cacheFirst(request));
+  }
 });
 
+// ─── Strategy implementations ─────────────────────────────────────────────────
+
 /**
- * Cache-first strategy.
+ * Network-first for navigation requests.
+ * Fetches a fresh copy when online and caches it; falls back to cached
+ * index.html when offline so the app still loads after the first visit.
+ */
+async function networkFirstNav(request) {
+  const cache = await caches.open(CACHE_VERSION);
+  try {
+    const response = await fetch(request);
+    if (response.ok) {
+      cache.put(request, response.clone());
+    }
+    return response;
+  } catch {
+    // Offline — serve the cached app shell
+    const cached = await cache.match(request) ?? await cache.match("./index.html");
+    if (cached) return cached;
+    return new Response("Offline", { status: 503 });
+  }
+}
+
+/**
+ * Cache-first for static assets (content-hashed URLs).
  * On miss: fetch from network, cache the response, return it.
- * For navigation (HTML) requests on network failure: serve cached index.html.
  */
 async function cacheFirst(request) {
   const cache = await caches.open(CACHE_VERSION);
@@ -72,17 +113,11 @@ async function cacheFirst(request) {
 
   try {
     const response = await fetch(request);
-    // Only cache successful responses with a body we can clone
     if (response.ok && response.status === 200) {
       cache.put(request, response.clone());
     }
     return response;
   } catch {
-    // Network failure — for navigation requests fall back to index.html
-    if (request.mode === "navigate") {
-      const fallback = await cache.match("./index.html");
-      if (fallback) return fallback;
-    }
     return new Response("Offline", { status: 503 });
   }
 }

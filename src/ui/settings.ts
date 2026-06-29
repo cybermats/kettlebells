@@ -8,7 +8,8 @@
 
 import type { Store } from "../state/index";
 import type { Settings, ThemePreference } from "../domain/types";
-import { setSettings } from "../state/index";
+import { setSettings, setProgression, incrementRefreshKey } from "../state/index";
+import { reconcileProgression } from "../domain/coach";
 import { exportAll, importReplaceAll, ImportError } from "../storage/export-import";
 import { applyTheme } from "./theme";
 import { el, clear, formatSec } from "./dom";
@@ -67,12 +68,15 @@ export function renderSettings(container: HTMLElement, store: Store): () => void
       chip.appendChild(document.createTextNode(`${kg} kg`));
       const rm = el("button", { class: "bell-chip__remove", type: "button", "aria-label": `Remove ${kg} kg bell` }, ["×"]);
       rm.addEventListener("click", () => {
-        const s = store.getState().settings;
+        const { settings, progression } = store.getState();
         const next: Settings = {
-          ...s,
-          ownedBellsKg: s.ownedBellsKg.filter((b) => b !== kg),
+          ...settings,
+          ownedBellsKg: settings.ownedBellsKg.filter((b) => b !== kg),
         };
+        // Reconcile progression so the coach never prescribes the removed bell.
+        const nextProgression = reconcileProgression(progression, next);
         store.setState(setSettings(next));
+        store.setState(setProgression(nextProgression));
         rebuildBellList();
       });
       chip.appendChild(rm);
@@ -100,13 +104,16 @@ export function renderSettings(container: HTMLElement, store: Store): () => void
   function addBell(): void {
     const value = parseFloat((addBellInput as HTMLInputElement).value);
     if (isNaN(value) || value <= 0) return;
-    const s = store.getState().settings;
-    if (s.ownedBellsKg.includes(value)) return; // already in list
+    const { settings, progression } = store.getState();
+    if (settings.ownedBellsKg.includes(value)) return; // already in list
     const next: Settings = {
-      ...s,
-      ownedBellsKg: [...s.ownedBellsKg, value].sort((a, b) => a - b),
+      ...settings,
+      ownedBellsKg: [...settings.ownedBellsKg, value].sort((a, b) => a - b),
     };
+    // Reconcile progression so nextKg advances toward the newly added bell if applicable.
+    const nextProgression = reconcileProgression(progression, next);
     store.setState(setSettings(next));
+    store.setState(setProgression(nextProgression));
     (addBellInput as HTMLInputElement).value = "";
     rebuildBellList();
   }
@@ -313,6 +320,8 @@ export function renderSettings(container: HTMLElement, store: Store): () => void
           progression: result.progression,
         }));
         applyTheme(result.settings.theme);
+        // Force a remount of the current view so settings inputs reflect the new data.
+        store.setState(incrementRefreshKey());
         showMsg("Import successful!", false);
       } catch (err) {
         const detail = err instanceof ImportError ? err.message : String(err);
