@@ -164,8 +164,28 @@ Lives in `domain/`, pure and fully unit-tested. Full rules in
 - Match the style and structure of existing code once it exists.
 - When a change is ambiguous about a *product/domain* rule, ask. When it's an *implementation*
   detail covered by the conventions above, just follow them.
+- **Develop test-first (TDD).** Write a failing test that captures the desired behavior, watch it
+  fail, then write the minimum code to make it pass, then refactor. This is especially important for
+  `domain/` (program rules, progression, migrations) — the pure, high-value logic. Don't write
+  production code without a failing test driving it.
 - Run `tsc`/build and tests before claiming a change works; report real output.
+- **Review new features with a fresh agent.** When an agent finishes developing a new feature, have
+  a separate agent review the design and implementation, acting as a Staff Engineer: check
+  architectural fit (the ADRs above), correctness, test coverage, and simplicity. The reviewer must
+  be a different agent than the one that wrote the code, so the review is independent.
 - If you make a new architecture-level decision, add an ADR in `docs/adr/` and link it here.
+- **Running multiple agents in parallel?** Use the local `worktree` skill so each agent works in
+  an isolated git worktree instead of fighting over the main checkout. Acquire a slot, work in it,
+  then release it back to the pool.
+
+## Multi-part requests
+
+- When a user gives more than one instruction, requirement, suggestion, or constraint in a single
+  request, switch to a checklist-style working approach.
+- Break the request into concrete checklist items, keep the items in the user's stated order when
+  practical, and tick them off one by one as work progresses.
+- Before finishing, review the checklist against the user's original request and explicitly account
+  for any item that was not completed, changed, or deferred.
 
 ## Commands
 
