@@ -1,0 +1,16 @@
+# Editor backups
+*~
+*.swp
+.DS_Store
+
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+.vite/
+
+# Logs & env
+*.log
+.env
+.env.local
