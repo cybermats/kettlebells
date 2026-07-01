@@ -43,6 +43,15 @@
   margin-block-start: var(--size-6);
 }
 
+/* The first exercise section sits directly under the sticky timer toolbar. Use
+   padding, not margin, for its top breathing room: padding scrolls with the
+   section and is clipped cleanly at the toolbar's edge, whereas a transparent
+   top *margin* would leave a fixed gap for scrolling rows to peek through. */
+.session-view > .session-block:first-of-type {
+  margin-block-start: 0;
+  padding-block-start: var(--size-5);
+}
+
 /* ─── Cards ─────────────────────────────────────────────────────────────────── */
 
 .card {
@@ -138,13 +147,21 @@
   flex-wrap: wrap;
   align-items: center;
   gap: var(--size-3);
+  /* The timer is a sticky toolbar docked under the app header, not a floating
+     card. Break out of the .app-main inline padding (var(--size-4)) so its opaque
+     background reaches both viewport edges — edge-to-edge chrome, like the header.
+     A bottom border + shadow give a crisp seam so set rows scroll cleanly out of
+     view beneath it. Crucially it has NO bottom margin: a transparent gap here
+     would let scrolling rows peek out below the toolbar (the "background shows
+     through" bug). Spacing before the first exercise section is provided by that
+     section's own padding instead (see .session-block:first-of-type below). */
+  margin-inline: calc(-1 * var(--size-4));
+  padding: var(--size-3) var(--size-4);
   background-color: var(--surface-2);
-  border-radius: var(--radius-3);
-  padding: var(--size-3);
-  margin-block-end: var(--size-4);
-  /* Keep the timer reachable while scrolling the set list: stick just below the
-     sticky app header (var(--header-height)). Sits below the header (z-index 10)
-     but above the scrolling set rows. */
+  border-block-end: var(--border-size-1) solid var(--border-color);
+  box-shadow: var(--shadow-2);
+  /* Stick just below the sticky app header (var(--header-height)). Sits below the
+     header (z-index 10) but above the scrolling set rows. */
   position: sticky;
   top: var(--header-height);
   z-index: 5;
