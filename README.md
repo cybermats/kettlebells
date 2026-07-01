@@ -33,3 +33,21 @@ pnpm typecheck      # type-check without emitting
 
 To deploy, run `pnpm build` and host the contents of `dist/` on any static file
 server — there is no server runtime to operate.
+
+## Deploying to Cloudflare Pages
+
+The static build is a natural fit for [Cloudflare Pages](https://pages.cloudflare.com/).
+In the Cloudflare dashboard, go to **Workers & Pages → Create → Pages → Connect to
+Git**, pick this repository, and use these build settings:
+
+| Setting                  | Value       |
+| ------------------------ | ----------- |
+| Framework preset         | None        |
+| Build command            | `pnpm build` |
+| Build output directory   | `dist`      |
+| Root directory           | *(leave blank)* |
+
+pnpm is detected automatically from `pnpm-lock.yaml`. Add an environment variable
+`NODE_VERSION = 20.8.0` (matching `.nvmrc`) so the build uses the expected Node
+version. After that, every push to `main` builds and deploys automatically, and you
+get a `*.pages.dev` URL (custom domains and HTTPS are included on the free plan).
