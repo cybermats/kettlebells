@@ -27,7 +27,9 @@
   align-items: center;
   gap: var(--size-2);
   padding-inline: var(--size-4);
-  padding-block: var(--size-2);
+  /* Fixed height so sticky children can offset by var(--header-height) exactly
+     (border-box: padding + border are included in the height). */
+  height: var(--header-height);
   background-color: var(--surface-2);
   border-block-end: var(--border-size-1) solid var(--border-color);
   position: sticky;

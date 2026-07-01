@@ -39,7 +39,10 @@
   /* Tap targets: 44px minimum for mobile */
   --tap-min:        2.75rem;
 
-  /* Nav */
+  /* App-shell chrome dimensions. These are layout contracts, not theme values:
+     the header is a sticky bar of exactly --header-height, so anything else that
+     sticks (e.g. the session stopwatch) offsets by `top: var(--header-height)`. */
+  --header-height:  3rem;
   --nav-height:     3.5rem;
 }
 
