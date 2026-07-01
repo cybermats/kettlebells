@@ -263,11 +263,11 @@ Lives in `domain/`, pure and fully unit-tested. Full rules in
 - `pnpm test` — Vitest (single run); `pnpm test:watch` for watch mode
 - `pnpm typecheck` — `tsc --noEmit`
 
-**Toolchain activation:** Node/pnpm are not on the default `PATH`. Node 20.8.0 is installed via
+**Toolchain activation:** Node/pnpm are not on the default `PATH`. Node 24.18.0 is installed via
 nvm and pnpm is provided by corepack. Prefix shell commands with:
 
 ```bash
-export NVM_DIR="$HOME/.nvm"; \. "$NVM_DIR/nvm.sh"; nvm use 20.8.0 >/dev/null
+export NVM_DIR="$HOME/.nvm"; \. "$NVM_DIR/nvm.sh"; nvm use 24.18.0 >/dev/null
 ```
 
 then `pnpm <script>` works.
