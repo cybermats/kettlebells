@@ -48,6 +48,6 @@ Git**, pick this repository, and use these build settings:
 | Root directory           | *(leave blank)* |
 
 pnpm is detected automatically from `pnpm-lock.yaml`. Add an environment variable
-`NODE_VERSION = 20.8.0` (matching `.nvmrc`) so the build uses the expected Node
+`NODE_VERSION = 24.18.0` (matching `.nvmrc`) so the build uses the expected Node
 version. After that, every push to `main` builds and deploys automatically, and you
 get a `*.pages.dev` URL (custom domains and HTTPS are included on the free plan).
