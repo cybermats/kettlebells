@@ -226,3 +226,79 @@ describe("session view — block time measurement", () => {
     expect(saved.swingBlockSec).toBeDefined();
   });
 });
+
+describe("session view — start/pause toggle button", () => {
+  let container: HTMLElement;
+  let cleanup: (() => void) | null = null;
+
+  beforeEach(() => {
+    container = makeContainer();
+  });
+
+  afterEach(() => {
+    cleanup?.();
+    document.body.removeChild(container);
+    cleanup = null;
+  });
+
+  it("shows a single Start/Pause toggle that flips label + state on click", () => {
+    const store = createStore(makeInitialState());
+    cleanup = renderSession(container, store);
+
+    const toggle = container.querySelector<HTMLButtonElement>(".stopwatch__toggle");
+    expect(toggle).not.toBeNull();
+
+    // Default: Start (primary, stopwatch stopped)
+    expect(toggle!.textContent).toContain("Start");
+    expect(toggle!.classList.contains("btn--primary")).toBe(true);
+    expect(store.getState().ui.stopwatch.running).toBe(false);
+
+    // Click → running, label becomes Pause and variant flips to secondary
+    toggle!.click();
+    expect(store.getState().ui.stopwatch.running).toBe(true);
+    expect(toggle!.textContent).toContain("Pause");
+    expect(toggle!.classList.contains("btn--secondary")).toBe(true);
+    expect(toggle!.classList.contains("btn--primary")).toBe(false);
+
+    // Click again → paused, label + variant restored
+    toggle!.click();
+    expect(store.getState().ui.stopwatch.running).toBe(false);
+    expect(toggle!.textContent).toContain("Start");
+    expect(toggle!.classList.contains("btn--primary")).toBe(true);
+    expect(toggle!.classList.contains("btn--secondary")).toBe(false);
+  });
+
+  it("reflects an already-running stopwatch at mount (remount mid-run)", () => {
+    // The stopwatch lives in the store and survives view switches. Mounting the
+    // session view while it is running must show "Pause", not a stale "Start".
+    const state = makeInitialState();
+    state.ui.stopwatch = { running: true, startedAtMs: Date.now(), accumulatedMs: 0 };
+    const store = createStore(state);
+    cleanup = renderSession(container, store);
+
+    const toggle = container.querySelector<HTMLButtonElement>(".stopwatch__toggle")!;
+    expect(toggle.textContent).toContain("Pause");
+    expect(toggle.classList.contains("btn--secondary")).toBe(true);
+  });
+
+  it("Reset returns a running toggle back to the Start label", () => {
+    const store = createStore(makeInitialState());
+    cleanup = renderSession(container, store);
+
+    const toggle = container.querySelector<HTMLButtonElement>(".stopwatch__toggle")!;
+    toggle.click(); // running → Pause
+    expect(toggle.textContent).toContain("Pause");
+
+    // Reset uses confirm(); force it to true for the test.
+    const originalConfirm = window.confirm;
+    window.confirm = () => true;
+    try {
+      container.querySelector<HTMLButtonElement>(".stopwatch__reset")!.click();
+    } finally {
+      window.confirm = originalConfirm;
+    }
+
+    expect(store.getState().ui.stopwatch.running).toBe(false);
+    expect(toggle.textContent).toContain("Start");
+  });
+});

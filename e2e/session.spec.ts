@@ -16,21 +16,44 @@ test("no horizontal overflow at a phone width", async ({ page }) => {
   expect(overflow, "page scrolls horizontally at 320px").toBeLessThanOrEqual(0);
 });
 
-test("start button runs the stopwatch and toggles controls", async ({ page }) => {
+test("start/pause toggle runs the stopwatch and flips its label", async ({ page }) => {
   await page.goto("/");
 
-  const start = page.getByRole("button", { name: /Start/ });
-  const pause = page.getByRole("button", { name: /Pause/ });
+  const toggle = page.locator(".stopwatch__toggle");
   const clock = page.locator(".stopwatch__time");
 
   await expect(clock).toHaveText("0:00.0");
-  await expect(start).toBeEnabled();
-  await expect(pause).toBeDisabled();
+  await expect(toggle).toHaveText(/Start/);
 
-  await start.click();
+  await toggle.click();
 
-  // Interaction outcome: controls flip and the clock actually advances.
-  await expect(start).toBeDisabled();
-  await expect(pause).toBeEnabled();
+  // Interaction outcome: the one button flips to Pause and the clock advances.
+  await expect(toggle).toHaveText(/Pause/);
   await expect(clock).not.toHaveText("0:00.0");
+
+  // Clicking again pauses and restores the Start label.
+  await toggle.click();
+  await expect(toggle).toHaveText(/Start/);
+});
+
+test("timer, toggle and reset sit on one row at a phone width", async ({ page }) => {
+  await page.goto("/");
+  await page.setViewportSize({ width: 320, height: 800 });
+
+  const time = page.locator(".stopwatch__time");
+  const toggle = page.locator(".stopwatch__toggle");
+  const reset = page.locator(".stopwatch__reset");
+
+  const [t, tog, r] = await Promise.all([
+    time.boundingBox(),
+    toggle.boundingBox(),
+    reset.boundingBox(),
+  ]);
+
+  // Vertically overlapping bounding boxes ⇒ same visual row (no wrap).
+  const sameRow = (a: typeof t, b: typeof t) =>
+    a !== null && b !== null && a.y < b.y + b.height && b.y < a.y + a.height;
+
+  expect(sameRow(t, tog), "timer and toggle are not on the same row").toBe(true);
+  expect(sameRow(tog, r), "toggle and reset are not on the same row").toBe(true);
 });

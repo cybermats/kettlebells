@@ -245,10 +245,16 @@ Lives in `domain/`, pure and fully unit-tested. Full rules in
   production code without a failing test driving it. This applies to pure logic in the `ui/` layer
   too: extract it (see above) and drive it with tests rather than leaving it untested inside a view.
 - Run `tsc`/build and tests before claiming a change works; report real output.
-- **Review new features with a fresh agent.** When an agent finishes developing a new feature, have
-  a separate agent review the design and implementation, acting as a Staff Engineer: check
-  architectural fit (the ADRs above), correctness, test coverage, and simplicity. The reviewer must
-  be a different agent than the one that wrote the code, so the review is independent.
+- **Review substantial changes with a fresh agent (Staff Engineer review).** After finishing any
+  change that is more than a trivial fix, spawn a *separate* agent to review design and
+  implementation, acting as a Staff Engineer: architectural fit (the ADRs above), correctness, test
+  coverage, and simplicity. Do this on your own initiative — you do not need to be asked. The
+  reviewer must be a different agent than the one that wrote the code, so the review is independent.
+  **Trigger it when any of these hold:** the change touches `domain/` or `storage/` (program rules /
+  migrations); it adds or alters an ADR-governed capability; it changes rendered layout or a
+  live-session browser capability; or it spans multiple files / both a view and its styles / more
+  than one test layer. Skip it only for trivial, single-file, low-risk edits (typos, copy, comments,
+  a one-line guard). When unsure, run it.
 - If you make a new architecture-level decision, add an ADR in `docs/adr/` and link it here.
 - **Running multiple agents in parallel?** Use the local `worktree` skill so each agent works in
   an isolated git worktree instead of fighting over the main checkout. Acquire a slot, work in it,

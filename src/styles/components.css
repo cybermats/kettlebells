@@ -144,7 +144,9 @@
 
 .stopwatch {
   display: flex;
-  flex-wrap: wrap;
+  /* Timer + toggle + reset share a single row. The time cell (below) shrinks so
+     the controls never wrap onto a second line, even at ~320px. */
+  flex-wrap: nowrap;
   align-items: center;
   gap: var(--size-3);
   /* The timer is a sticky toolbar docked under the app header, not a floating
@@ -176,12 +178,17 @@
   flex: 1 1 auto;
   min-width: 0;
   letter-spacing: -0.02em;
+  /* If the cell shrinks narrower than the digits at the ~320px floor, clip
+     rather than let the text bleed rightward under the controls. */
+  overflow: hidden;
 }
 
 .stopwatch__controls {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   gap: var(--size-2);
+  /* Hold their intrinsic width; the timer yields space instead of the buttons. */
+  flex: 0 0 auto;
 }
 
 /* ─── Set table ─────────────────────────────────────────────────────────────── */

@@ -142,13 +142,15 @@ export function renderSession(container: HTMLElement, store: Store): () => void 
 
   // Stopwatch section
   const swTimeEl = el("span", { class: "stopwatch__time" }, ["0:00.0"]);
-  const swStartBtn = el("button", { class: "btn btn--primary", type: "button" }, ["▶ Start"]);
-  const swPauseBtn = el("button", { class: "btn btn--secondary", type: "button" }, ["⏸ Pause"]);
-  const swResetBtn = el("button", { class: "btn btn--secondary btn--sm", type: "button" }, ["Reset"]);
-  swPauseBtn.disabled = true;
+  // Single Start/Pause toggle: primary "▶ Start" while stopped, secondary
+  // "⏸ Pause" while running. One button drives both transitions.
+  const swToggleBtn = el("button", { class: "btn btn--primary stopwatch__toggle", type: "button" }, [
+    "▶ Start",
+  ]);
+  const swResetBtn = el("button", { class: "btn btn--secondary btn--sm stopwatch__reset", type: "button" }, ["Reset"]);
 
   const swControls = el("div", { class: "stopwatch__controls" });
-  swControls.append(swStartBtn, swPauseBtn, swResetBtn);
+  swControls.append(swToggleBtn, swResetBtn);
 
   const swWrap = el("div", { class: "stopwatch" });
   swWrap.append(swTimeEl, swControls);
@@ -313,12 +315,32 @@ export function renderSession(container: HTMLElement, store: Store): () => void 
   root.append(swWrap, statusMsg, swingSection, getupSection, coachPanel, finishSection);
   clear(container).appendChild(root);
 
+  // Reconcile the toggle with the store's running state at mount. The stopwatch
+  // lives in the store and survives view switches, so remounting the session
+  // view (e.g. History → Session mid-run) must not leave a running clock showing
+  // a "▶ Start" button. (renderToggle is a hoisted declaration, defined below.)
+  renderToggle(store.getState().ui.stopwatch.running);
+
   // ─── Stopwatch logic ─────────────────────────────────────────────────────────
 
-  swStartBtn.addEventListener("click", () => {
+  /** Sync the toggle button's label + variant to the running state. */
+  function renderToggle(running: boolean): void {
+    swToggleBtn.textContent = running ? "⏸ Pause" : "▶ Start";
+    swToggleBtn.classList.toggle("btn--primary", !running);
+    swToggleBtn.classList.toggle("btn--secondary", running);
+  }
+
+  swToggleBtn.addEventListener("click", () => {
+    if (store.getState().ui.stopwatch.running) {
+      // Running → pause.
+      store.setState(pauseStopwatch(Date.now()));
+      renderToggle(false);
+      void releaseWakeLock();
+      return;
+    }
+    // Stopped → start.
     store.setState(startStopwatch(Date.now()));
-    swStartBtn.disabled = true;
-    swPauseBtn.disabled = false;
+    renderToggle(true);
     // Record the start of the first mark interval and the swing block start.
     // Both are elapsed=0 at stopwatch start; this ensures the swing block spans
     // from the very beginning (including set 0's work), not from set-0-done.
@@ -333,18 +355,10 @@ export function renderSession(container: HTMLElement, store: Store): () => void 
     unlockAudio();
   });
 
-  swPauseBtn.addEventListener("click", () => {
-    store.setState(pauseStopwatch(Date.now()));
-    swStartBtn.disabled = false;
-    swPauseBtn.disabled = true;
-    void releaseWakeLock();
-  });
-
   swResetBtn.addEventListener("click", () => {
     if (!confirm("Reset the stopwatch?")) return;
     store.setState(resetStopwatch());
-    swStartBtn.disabled = false;
-    swPauseBtn.disabled = true;
+    renderToggle(false);
     lastMarkMs = null;
     swingBlockStartMs = null;
     swingBlockEndMs = null;
