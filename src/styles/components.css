@@ -13,8 +13,34 @@
   padding-block-end: var(--size-1);
   border-block-end: var(--border-size-2) solid var(--accent);
   display: flex;
-  align-items: center;
+  align-items: baseline;
   gap: var(--size-2);
+}
+
+.section-title__label {
+  /* Allow the label to shrink so the running-total stays on the same line
+     without pushing the row past a narrow phone viewport. */
+  min-width: 0;
+}
+
+/* Running block split (e.g. "2:14 / 5:00"), right-aligned in the heading. */
+.section-title__total {
+  margin-inline-start: auto;
+  font-size: var(--font-size-0);
+  font-weight: var(--font-weight-5);
+  font-variant-numeric: tabular-nums;
+  color: var(--text-2);
+  white-space: nowrap;
+}
+
+.section-title__total--over {
+  color: var(--color-danger);
+  font-weight: var(--font-weight-6);
+}
+
+/* Extra breathing room above each exercise sub-section (Swings / Get-ups). */
+.session-block {
+  margin-block-start: var(--size-6);
 }
 
 /* ─── Cards ─────────────────────────────────────────────────────────────────── */
@@ -116,6 +142,12 @@
   border-radius: var(--radius-3);
   padding: var(--size-3);
   margin-block-end: var(--size-4);
+  /* Keep the timer reachable while scrolling the set list: stick just below the
+     sticky app header (var(--header-height)). Sits below the header (z-index 10)
+     but above the scrolling set rows. */
+  position: sticky;
+  top: var(--header-height);
+  z-index: 5;
 }
 
 .stopwatch__time {
@@ -198,11 +230,30 @@
   font-weight: var(--font-weight-6);
 }
 
-.set-row__rest {
+/* Dynamic time cell: prescribed rest → live countdown → actual split. */
+.set-row__time {
   font-size: var(--font-size-0);
   color: var(--text-2);
   text-align: right;
   white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Live countdown on the active resting set. */
+.set-row__time--countdown {
+  color: var(--accent);
+  font-weight: var(--font-weight-6);
+}
+
+/* Past the prescribed rest — the set is due (accompanies the beep). */
+.set-row__time--overdue {
+  color: var(--color-danger);
+  font-weight: var(--font-weight-7);
+}
+
+/* Frozen actual split once the set is marked done. */
+.set-row__time--split {
+  color: var(--text-3);
 }
 
 .set-row__done-btn {
@@ -286,6 +337,14 @@
   font-size: var(--font-size-0);
   color: var(--color-danger);
   margin-block-start: var(--size-1);
+}
+
+/* Coach detail: last block time vs goal + prescribed rest, full-width line. */
+.coach-panel__detail {
+  flex: 1 1 100%;
+  font-size: var(--font-size-0);
+  color: var(--text-2);
+  font-variant-numeric: tabular-nums;
 }
 
 /* ─── History list ──────────────────────────────────────────────────────────── */

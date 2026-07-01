@@ -36,7 +36,11 @@ import {
   incrementRefreshKey,
 } from "../state/index";
 import { prescribeSession, readiness, canAdvanceWeight, tryAdvance } from "../domain/coach";
+import { swingRestSec, getupRestSec } from "../domain/standards";
 import { el, clear, formatMs, formatSec } from "./dom";
+import { acquireWakeLock, releaseWakeLock, reacquireWakeLockIfWanted } from "./wake-lock";
+import { playSetDue, unlockAudio } from "./beep";
+import { blockDurationSec, remainingRestSec, activeSet } from "./session-timing";
 
 // ─── Side / hand label helpers ────────────────────────────────────────────────
 
@@ -76,6 +80,10 @@ interface DraftSet {
   done: boolean;
   actualRestSec?: number;
   workSec?: number;
+  /** Row element — so the live tick can toggle the active/overdue classes. */
+  rowEl?: HTMLElement;
+  /** Time cell — shows prescribed rest, then the live countdown, then the split. */
+  timeEl?: HTMLElement;
 }
 
 // ─── Main render function ─────────────────────────────────────────────────────
@@ -121,6 +129,12 @@ export function renderSession(container: HTMLElement, store: Store): () => void 
 
   // Track the stopwatch reading at the start of each set's rest interval
   let lastMarkMs: number | null = null;
+
+  // Set-due chime bookkeeping: one beep per set (keyed "kind:index"), reset on
+  // stopwatch reset. Prevents the "overdue" state re-triggering every frame.
+  const beepedKeys = new Set<string>();
+  // The row currently highlighted as the active resting set (tick-managed).
+  let activeRow: HTMLElement | null = null;
 
   // ─── DOM construction ────────────────────────────────────────────────────────
 
@@ -169,8 +183,10 @@ export function renderSession(container: HTMLElement, store: Store): () => void 
     });
     weightWrap.appendChild(weightSel);
 
-    // Rest label
-    const restEl = el("span", { class: "set-row__rest" }, [
+    // Time cell — starts by showing the prescribed rest for this set, then the
+    // live countdown while it is the active resting set, then the actual split
+    // once the set is marked done. Updated by the tick loop / markSetDone.
+    const timeEl = el("span", { class: "set-row__time" }, [
       `${formatSec(draft.base.prescribedRestSec)} rest`,
     ]);
 
@@ -180,7 +196,9 @@ export function renderSession(container: HTMLElement, store: Store): () => void 
       markSetDone(draft, index, kind, row, doneBtn);
     });
 
-    row.append(indexEl, labelEl, weightWrap, restEl, doneBtn);
+    row.append(indexEl, labelEl, weightWrap, timeEl, doneBtn);
+    draft.rowEl = row;
+    draft.timeEl = timeEl;
     return row;
   }
 
@@ -224,9 +242,19 @@ export function renderSession(container: HTMLElement, store: Store): () => void 
 
     draft.done = true;
     row.classList.add("set-row--done");
+    row.classList.remove("set-row--active");
     btn.classList.add("set-row__done-btn--done");
     btn.disabled = true;
     btn.textContent = "✓";
+
+    // Freeze this row's time cell to the actual split (interval since the
+    // previous set was marked done). Undefined when the stopwatch never ran.
+    if (draft.timeEl) {
+      draft.timeEl.classList.remove("set-row__time--countdown", "set-row__time--overdue");
+      draft.timeEl.classList.add("set-row__time--split");
+      draft.timeEl.textContent =
+        draft.actualRestSec !== undefined ? formatSec(draft.actualRestSec) : "—";
+    }
 
     // If all swings done, prompt user to move to getups
     const allSwingsDone = swingDrafts.every((d) => d.done);
@@ -243,7 +271,13 @@ export function renderSession(container: HTMLElement, store: Store): () => void 
 
   // Build swing sets
   const swingSection = el("section", { class: "session-block" });
-  const swingTitle = el("h2", { class: "section-title" }, ["🔄 Swings (10 × 10)"]);
+  const swingTitle = el("h2", { class: "section-title" });
+  const swingTitleLabel = el("span", { class: "section-title__label" }, ["🔄 Swings (10 × 10)"]);
+  // Running block total vs the 5:00 standard, updated live by the tick loop.
+  const swingTotalEl = el("span", { class: "section-title__total" }, [
+    `—:— / ${formatSec(settings.goal.swingStandardSec)}`,
+  ]);
+  swingTitle.append(swingTitleLabel, swingTotalEl);
   const swingList = el("div", { class: "set-list" });
   for (let i = 0; i < swingDrafts.length; i++) {
     swingList.appendChild(buildSetRow(swingDrafts[i]!, i, "swing"));
@@ -252,7 +286,12 @@ export function renderSession(container: HTMLElement, store: Store): () => void 
 
   // Build getup sets
   const getupSection = el("section", { class: "session-block" });
-  const getupTitle = el("h2", { class: "section-title" }, ["🎯 Get-ups (10 × 1)"]);
+  const getupTitle = el("h2", { class: "section-title" });
+  const getupTitleLabel = el("span", { class: "section-title__label" }, ["🎯 Get-ups (10 × 1)"]);
+  const getupTotalEl = el("span", { class: "section-title__total" }, [
+    `—:— / ${formatSec(settings.goal.getupStandardSec)}`,
+  ]);
+  getupTitle.append(getupTitleLabel, getupTotalEl);
   const getupList = el("div", { class: "set-list" });
   for (let i = 0; i < getupDrafts.length; i++) {
     getupList.appendChild(buildSetRow(getupDrafts[i]!, i, "getup"));
@@ -287,12 +326,18 @@ export function renderSession(container: HTMLElement, store: Store): () => void 
       lastMarkMs = 0;
       swingBlockStartMs = 0;
     }
+    // Keep the phone awake while actively timing a session.
+    void acquireWakeLock();
+    // Unlock Web Audio from within this user gesture so the set-due chime can
+    // sound later (iOS/autoplay policy won't allow it if first touched in a timer).
+    unlockAudio();
   });
 
   swPauseBtn.addEventListener("click", () => {
     store.setState(pauseStopwatch(Date.now()));
     swStartBtn.disabled = false;
     swPauseBtn.disabled = true;
+    void releaseWakeLock();
   });
 
   swResetBtn.addEventListener("click", () => {
@@ -305,17 +350,121 @@ export function renderSession(container: HTMLElement, store: Store): () => void 
     swingBlockEndMs = null;
     getupBlockStartMs = null;
     getupBlockEndMs = null;
+    beepedKeys.clear();
+    // Restore any not-done rows whose time cell was mid-countdown/overdue back
+    // to their prescribed-rest label, and drop the active highlight — otherwise
+    // a stale "0:07 left" / "+0:05 over" lingers after the clock returns to 0:00.
+    resetTimeCells();
+    void releaseWakeLock();
   });
 
-  // Ticking display — requestAnimationFrame loop
+  /** Restore every not-done set's time cell to its prescribed-rest default. */
+  function resetTimeCells(): void {
+    if (activeRow) {
+      activeRow.classList.remove("set-row--active");
+      activeRow = null;
+    }
+    for (const draft of [...swingDrafts, ...getupDrafts]) {
+      if (draft.done || !draft.timeEl) continue;
+      draft.timeEl.classList.remove("set-row__time--countdown", "set-row__time--overdue");
+      draft.timeEl.textContent = `${formatSec(draft.base.prescribedRestSec)} rest`;
+    }
+  }
+
+  // ─── Live block-total display ────────────────────────────────────────────────
+  //
+  // Shows the running (or frozen) duration of each block against its standard,
+  // e.g. "2:14 / 5:00". A block reads live while in progress and freezes once
+  // its end mark is recorded.
+  function renderBlockTotal(
+    el_: HTMLElement,
+    startMs: number | null,
+    endMs: number | null,
+    standardSec: number,
+    elapsed: number,
+  ): void {
+    const durSec = blockDurationSec(startMs, endMs, elapsed);
+    if (durSec === null) {
+      el_.textContent = `—:— / ${formatSec(standardSec)}`;
+      el_.classList.remove("section-title__total--over");
+      return;
+    }
+    el_.textContent = `${formatSec(durSec)} / ${formatSec(standardSec)}`;
+    el_.classList.toggle("section-title__total--over", durSec > standardSec);
+  }
+
+  // ─── Live per-set countdown + set-due chime ──────────────────────────────────
+  //
+  // The active resting set is the first not-yet-done set in the current block.
+  // While the stopwatch runs we count down its prescribed rest; at zero we play
+  // beep-beep-boop (once) and flip the row into an "overdue" state.
+  function updateActiveSet(elapsed: number, running: boolean): void {
+    const current = activeSet(swingDrafts, getupDrafts);
+
+    if (!running || lastMarkMs === null || !current || !current.set.timeEl) {
+      if (activeRow) {
+        activeRow.classList.remove("set-row--active");
+        activeRow = null;
+      }
+      return;
+    }
+
+    const active = current.set;
+    const timeEl = current.set.timeEl;
+
+    // Highlight the active row (moving the highlight if it changed).
+    if (activeRow !== active.rowEl) {
+      if (activeRow) activeRow.classList.remove("set-row--active");
+      active.rowEl?.classList.add("set-row--active");
+      activeRow = active.rowEl ?? null;
+    }
+
+    const remainingSec = remainingRestSec(active.base.prescribedRestSec, elapsed - lastMarkMs);
+    if (remainingSec > 0) {
+      timeEl.classList.add("set-row__time--countdown");
+      timeEl.classList.remove("set-row__time--overdue");
+      timeEl.textContent = `${formatSec(Math.ceil(remainingSec))} left`;
+    } else {
+      timeEl.classList.remove("set-row__time--countdown");
+      timeEl.classList.add("set-row__time--overdue");
+      timeEl.textContent = `+${formatSec(Math.floor(-remainingSec))} over`;
+      const key = `${current.kind}:${current.index}`;
+      if (!beepedKeys.has(key)) {
+        beepedKeys.add(key);
+        playSetDue();
+      }
+    }
+  }
+
+  // Ticking display — requestAnimationFrame loop.
+  // The display only changes while the stopwatch runs, so we skip the per-frame
+  // DOM writes when it's idle (with one final repaint on the running→stopped
+  // edge to freeze the last values). Avoids needless main-thread/battery work
+  // when the session screen is left open on a phone.
   let rafId = 0;
+  let wasRunning = false;
   function tick(): void {
     const sw = store.getState().ui.stopwatch;
-    const ms = elapsedMs(sw, Date.now());
-    swTimeEl.textContent = formatMs(ms);
+    if (sw.running || wasRunning) {
+      const ms = elapsedMs(sw, Date.now());
+      swTimeEl.textContent = formatMs(ms);
+      renderBlockTotal(swingTotalEl, swingBlockStartMs, swingBlockEndMs, settings.goal.swingStandardSec, ms);
+      renderBlockTotal(getupTotalEl, getupBlockStartMs, getupBlockEndMs, settings.goal.getupStandardSec, ms);
+      updateActiveSet(ms, sw.running);
+      wasRunning = sw.running;
+    }
     rafId = requestAnimationFrame(tick);
   }
   rafId = requestAnimationFrame(tick);
+
+  // ─── Keep the phone awake across tab-hide while a session is running ──────────
+  function onVisibilityChange(): void {
+    reacquireWakeLockIfWanted();
+  }
+  document.addEventListener("visibilitychange", onVisibilityChange);
+
+  // The sticky stopwatch offsets below the header purely in CSS via
+  // `top: var(--header-height)` — no JS measurement needed (see .stopwatch).
 
   // ─── Helper: show status message ─────────────────────────────────────────────
 
@@ -346,6 +495,19 @@ export function renderSession(container: HTMLElement, store: Store): () => void 
       }, [isReady ? "Ready to advance" : "Keep at current weight"]);
 
       row.append(label, statusEl);
+
+      // Detail line: last session's block time vs the goal standard, plus the
+      // per-set rest the coach is prescribing — explains why it is/ isn't ready.
+      const { goal } = settings;
+      const last = sessions.length > 0 ? sessions[sessions.length - 1] : undefined;
+      const lastBlockSec = kind === "swing" ? last?.swingBlockSec : last?.getupBlockSec;
+      const goalSec = kind === "swing" ? goal.swingStandardSec : goal.getupStandardSec;
+      const restSec = kind === "swing" ? swingRestSec(goal) : getupRestSec(goal);
+      const lastStr = lastBlockSec !== undefined ? `last ${formatSec(lastBlockSec)} / ` : "";
+      const detailEl = el("p", { class: "coach-panel__detail" }, [
+        `${lastStr}goal ${formatSec(goalSec)} · ${restSec}s/set`,
+      ]);
+      row.appendChild(detailEl);
 
       // Gate the button on canAdvanceWeight (not readiness alone), so it is
       // disabled when the user is already at the heaviest bell or blocked by
@@ -440,6 +602,7 @@ export function renderSession(container: HTMLElement, store: Store): () => void 
 
     store.setState(addSession(session));
     store.setState(resetStopwatch());
+    void releaseWakeLock();
     // Increment the refresh key so app.ts remounts this view with a fresh
     // prescription for the next session rather than showing the completed one.
     store.setState(incrementRefreshKey());
@@ -449,5 +612,7 @@ export function renderSession(container: HTMLElement, store: Store): () => void 
 
   return function cleanup(): void {
     cancelAnimationFrame(rafId);
+    document.removeEventListener("visibilitychange", onVisibilityChange);
+    void releaseWakeLock();
   };
 }
