@@ -13,6 +13,9 @@ node_modules/
 dist/
 .vite/
 
+# Playwright e2e artifacts (report, traces, screenshots)
+.playwright/
+
 # Logs & env
 *.log
 .env

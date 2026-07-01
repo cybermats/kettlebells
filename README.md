@@ -27,8 +27,22 @@ Other useful commands:
 ```bash
 pnpm build          # type-check + produce a static production build in dist/
 pnpm preview        # serve the production build locally
-pnpm test           # run the test suite (Vitest)
+pnpm test           # run the unit test suite (Vitest)
+pnpm e2e            # run the end-to-end / layout tests (Playwright, headless)
 pnpm typecheck      # type-check without emitting
+```
+
+### End-to-end tests (Playwright)
+
+Unit tests run in jsdom, which doesn't render the page, so layout/overflow and live interactions are
+tested separately with [Playwright](https://playwright.dev/) in a real headless browser at a phone
+viewport (see [ADR-0008](docs/adr/0008-playwright-e2e-testing.md)). Specs live in `e2e/`. The e2e
+suite is its own task and is **not** part of `pnpm build`.
+
+```bash
+pnpm exec playwright install chromium   # one-time: download the test browser
+pnpm e2e                                 # run the e2e suite (auto-starts the dev server)
+pnpm e2e:headed                          # same, but watch the browser drive the app
 ```
 
 To deploy, run `pnpm build` and host the contents of `dist/` on any static file

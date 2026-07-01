@@ -11,12 +11,15 @@
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
+    "e2e": "playwright test",
+    "e2e:headed": "playwright test --headed",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "open-props": "^1.7.16"
   },
   "devDependencies": {
+    "@playwright/test": "^1.61.1",
     "@types/node": "^20.11.0",
     "jsdom": "^24.1.0",
     "typescript": "^5.5.0",

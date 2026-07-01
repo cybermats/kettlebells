@@ -36,6 +36,10 @@ rather than working around it. Each has a record in `docs/adr/`.
   platform APIs beyond the DOM — Screen Wake Lock, Web Audio (the set-due chime), and a sticky
   timer — each feature-detected and reduced to a safe no-op when unsupported.
   ([ADR-0007](docs/adr/0007-live-session-browser-capabilities.md))
+- **Playwright for e2e / rendered-layout testing.** A thin end-to-end layer drives the real app in a
+  headless browser at a phone viewport, covering what jsdom cannot — layout/overflow and live
+  interactions. It is a dev dependency in its own `pnpm e2e` task, kept out of `build`/CI.
+  ([ADR-0008](docs/adr/0008-playwright-e2e-testing.md))
 
 **TypeScript is strict** (`strict: true`). Lean on the types — they are the main guardrail.
 
@@ -83,9 +87,12 @@ larger phones ≈ 414–430px).
 - **No horizontal overflow at any width in that range.** The layout must never extend past the
   viewport edge or require sideways scrolling. ~320px is the floor a layout must survive; verify at
   a narrow width, not just the default desktop window.
-- **Layout bugs are invisible to the test suite.** Vitest runs in jsdom with no real rendering, so
-  overflow/wrapping/grid issues won't fail a test. Verify layout changes by eye in the browser at a
-  narrow width (dev-tools device emulation), in addition to `tsc`/build/tests.
+- **Layout bugs are invisible to the *unit* suite.** Vitest runs in jsdom with no real rendering, so
+  overflow/wrapping/grid issues won't fail a Vitest test. Verify layout changes by eye in the browser
+  at a narrow width (dev-tools device emulation), in addition to `tsc`/build/tests. For automated
+  coverage, the Playwright e2e layer (`pnpm e2e`, [ADR-0008](docs/adr/0008-playwright-e2e-testing.md))
+  renders the real app at a phone viewport and can assert against overflow and live interactions —
+  add or extend an `e2e/*.spec.ts` check when a change materially affects layout.
 - Prefer shrink-friendly layouts: `minmax(0, 1fr)` grid tracks, `min-width: 0` on flex/grid
   children that hold growable content (selects, long text), and `flex-wrap` on rows of controls.
 
@@ -212,8 +219,12 @@ Lives in `domain/`, pure and fully unit-tested. Full rules in
 ## Tooling & conventions
 
 - **Package manager:** pnpm (lockfile: `pnpm-lock.yaml`). Run scripts as `pnpm <script>`.
-- **Tests:** Vitest. Cover `domain/` (program rules, progression, migrations) thoroughly; those
-  are the high-value, pure-logic targets.
+- **Tests:** Vitest for unit/logic (`pnpm test`). Cover `domain/` (program rules, progression,
+  migrations) thoroughly; those are the high-value, pure-logic targets. Playwright for e2e
+  (`pnpm e2e`, [ADR-0008](docs/adr/0008-playwright-e2e-testing.md)): a thin real-browser layer for
+  rendered layout and live interactions only — the things jsdom can't see. Specs live in `e2e/*.spec.ts`
+  (separate from Vitest's `*.test.ts` in `src/**`/`test/**`); keep them few and focused, and don't
+  duplicate pure-logic coverage there. E2E is its own task, not part of `pnpm build`.
 - **Naming:** `kebab-case` files, `camelCase` values, `PascalCase` types. Modules export named
   symbols (avoid default exports).
 - **No new runtime dependencies** without an ADR and a clear reason. Dev dependencies (Vite,
@@ -261,6 +272,9 @@ Lives in `domain/`, pure and fully unit-tested. Full rules in
 - `pnpm build` — typecheck + static production build to `dist/`
 - `pnpm preview` — serve the built output
 - `pnpm test` — Vitest (single run); `pnpm test:watch` for watch mode
+- `pnpm e2e` — Playwright e2e/layout tests (headless, phone viewport); `pnpm e2e:headed` to watch it
+  run. Auto-starts/reuses the dev server. First-time setup needs the browser:
+  `pnpm exec playwright install chromium`.
 - `pnpm typecheck` — `tsc --noEmit`
 
 **Toolchain activation:** Node/pnpm are not on the default `PATH`. Node 24.18.0 is installed via

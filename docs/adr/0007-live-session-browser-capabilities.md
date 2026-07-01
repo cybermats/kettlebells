@@ -43,7 +43,9 @@ lives in `ui/session-timing.ts` and is unit-tested; the browser-capability glue 
 ## Consequences
 
 - On a browser (or jsdom) lacking any of these APIs, the feature silently does nothing and nothing
-  else breaks — tests run without stubbing platform globals.
+  else breaks — Vitest tests run without stubbing platform globals. Where these capabilities need
+  exercising in a *real* browser, that belongs in the Playwright e2e layer
+  ([ADR-0008](0008-playwright-e2e-testing.md)), not jsdom.
 - The audible chime — a headline feature — is only reliable because audio is unlocked from a gesture;
   any future sound must follow the same unlock-in-gesture rule, not play cold from a timer.
 - `--header-height` is a **layout contract**: changing the header's size means updating that token so
